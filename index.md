@@ -181,7 +181,7 @@ Rank the correlation by the absolute value of the correlation:
 
 
 Build a Decision tree model, and evaluate it's accuracy (SEE TREE CHART BELOW):
-![](index_files/figure-html/unnamed-chunk-6-1.png)<!-- -->
+![](unnamed-chunk-6-1.png)<!-- -->
 *Note that the decision tree prediction classes are only correct about half the time, even in the trainig data.* 
 
 
