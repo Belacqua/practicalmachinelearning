@@ -78,7 +78,7 @@ Read the data from the local working directory, and looking at the distribution 
 ## 5580 3797 3422 3216 3607
 ```
 
-![](index_files/figure-html/unnamed-chunk-1-1.png)<!-- -->
+![](unnamed-chunk-1-1.png)<!-- -->
 
 Note that while 'A' is the mode of the class levels, it represents much less than half the results. So a predictive model is required to get some traction, since guessing 'A' would usually be wrong.
 
@@ -103,7 +103,7 @@ a correlation table to discover which of the newly transformed features are most
 ### Algorithm selection, and building and evaluating the models. 
 
 The first algorithm chosen is a decision tree model. This model is built on the final training data set from the last step above, and evaluated for it's accuracy (SEE TREE CHART BELOW):
-![](index_files/figure-html/unnamed-chunk-6-1.png)<!-- -->
+![](unnamed-chunk-6-1.png)<!-- -->
 
 While there is clearly some improvement over random guessing with just a few learned classification rules which the model generated, note that the decision tree predicted classes are only correct about half the time, even in the training data: 
 
