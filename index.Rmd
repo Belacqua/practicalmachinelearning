@@ -1,0 +1,234 @@
+---
+title: Predicting Excercise Effectiveness with Fitness Device Data and Machine Learning
+author: "David R Scott"
+date: "October 23, 2016"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+**Background**
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit; it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. 
+
+These device users regularly  quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+
+### Aims of the Project  
+
+The goal of your project is to predict the manner and effectiveness in which these device users did the exercise -- the "classe" variable in the training set. The other variables in the device data will be used to predict with.
+
+
+### Data  
+
+The training data for this project are available here:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+The test data are available here:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+
+### Process, Results  
+
+The process and results of the project include the following items, which are detailed, in order, in the remainder of this report:
+
+* Understanding the prediction question. 
+      + The question in this project is, can we idenitfy the when the partcipants perform barbell        lifts correctly and incorrectly in 5 different ways, from the various metricsd recorded 
+       on their devices. 
+      + Also, it would help to identify some of the key factors in such                predictions.
+       
+* Getting and cleaning the device data. 
+      + This includes not only reading it into R as an R object, but also            dealing with preprocessing to account for skewed or missing data,            creation of dummy variables, and otherwise accomdating the data to           the assumtions of the prediction problem and modeling techniques             available.
+
+* Sampling and Final Feature Selection. 
+      + Taking a sample of data for correlation analysis. There are over 150         features available and many  may reflect same information, or contain         no relevant information.  
+
+* Algorythm selection, building and testing models. 
+      + Classification trees are created, along with supporting graphs.         
+      + But Random Forests are eventually used, for better performance. The          model is then tested         on the test (held out) data.
+      
+* Interpreting the final model, and making predictions. 
+      +A method to estimate the out of sample error is selected and applied
+      +The model output should allow intepretation of the rsults in terms of
+       the model features, so that the results can be meaninful to the users.
+      +New predictions are the main result of the whole process, so the test        data is used to make predictions on 20 test cases.
+
+### Getting and cleaning the device data 
+
+**Begin by reading in the CSV file of training and test data.**
+Read the data from the local working directory, and looking at the distribution of the target variable 'classe':**
+```{r, echo = FALSE, cache=TRUE}
+
+#Read in Training and test data sets
+setwd("~/Data Science Training/Coursera/Data Science Specialization/Course 8 - Machine Learning/Course Project")
+training<-read.csv("pml-training.csv")
+testing<-read.csv("pml-testing.csv")
+table(training$classe)
+training[1,160] #look at the 'classe' variable, which is to be predicted.
+```
+
+**Next, we pre-process the data.**
+
+This step includes looking at the structure of the data, using this information for finding and conversion of factor variables to numeric, as well as droppping useless fields, imputing missing values with their nearest neighbor via the k-nearest neighbor algorithm, and creating dummy variables for the 5 levels of the 'classe' variable:**
+```{r, echo = FALSE, cache=TRUE, warning =FALSE}
+
+##########################################################
+#Preprocess to center, scale, and imput missing values
+##########################################################
+#set the seed for all random subsetting
+set.seed(1234)
+
+#Separate the classe variable to re-attach to the feature 
+#set after more preprocessing, for both train and test data.
+classe=data.frame(training[,160])
+colnames(classe)=c("classe")
+
+problem.id=data.frame(testing[,160])
+colnames(problem.id)=c("problem_id")
+
+#Look at the data structure, to determine needed changes:
+str(training)
+
+#Make certain factors into numeric, where data shows it is 
+#appropriate, for trainign and testing data:
+indx<- c(12,13,15,16,20,23,69,70,71,72,73,74,87,88,90,91,95,98,125,126,128,129,133,136)
+
+training[indx] <- lapply(training[indx], function(x) as.numeric(as.character(x)))
+
+testing[indx] <- lapply(testing[indx], function(x) as.numeric(as.character(x)))
+
+#Drop numeric data where information appears weak, misleading, 
+#spurious, or non-existent:
+indx<- c(1,14,17,26,89,92,101,127,130,139) 
+training=(training[-indx])
+testing=(testing[-indx])
+
+#Center, Scale, and Imput missing values with nearest neighbor:
+library(caret)
+#Train
+preObj <- preProcess(training[,-150],method="knnImpute")
+trainProcessed <- predict(preObj,training[,-150]) #drop target var 'classe' 
+trainProcessed<-cbind(trainProcessed,classe)#add target back in 
+#Test - Use the imputaton model from the training data
+testProcessed <- predict(preObj,testing[,-150]) #drop the test problem_id  
+test.subset<-cbind(testProcessed,problem.id) #rename data for steps below
+
+#Take small sample of test data for correlation analysis and
+#model testing:
+trainProcessed$randomNum<-runif(nrow(trainProcessed))
+train.subset<-trainProcessed[trainProcessed$randomNum<.1,]
+
+```
+Next, create dummy variables for the levels of 'classe', and build 
+a correaltion table, to discover the factors most related to 'classe':
+```{r, echo = FALSE, cache=TRUE}
+#Create Dummy variables for the target variable 'classe'
+library(dummies)
+train.subset=cbind(train.subset,dummy(train.subset$classe, data=NULL, sep = "", 
+      drop = TRUE, fun = as.integer, verbose = FALSE))
+
+#Calculate correlations between numeric features,
+#keeping the non-target correlations as rows, to
+#each of the 5 target outcome dummy variables:
+indx <- sapply(train.subset, is.numeric)
+#trainMatrix<-as.matrix(train.subset[indx])
+trainForCorr<-train.subset[indx]
+#cor(trainMatrix, use="complete.obs", method="kendall") 
+#cov(trainMatrix, use="complete.obs")  
+Target.correlations<-data.frame(cor(trainForCorr, use="complete.obs", method="kendall"))
+#Limit to non-target rows, and target columns:
+Target.correlations=Target.correlations[1:146,148:152]
+Target.correlations$Feature=rownames(Target.correlations)
+#write.table(Target.correlations,file="TargetCorrelations.csv",row.names=TRUE,sep=",")
+
+```
+Rank the correlation by the absolute value of the correlation:
+```{r, echo = FALSE, cache=TRUE}
+#Top 10 correlated features, ordering by the  
+#absolute value of the correlation,so that
+#the strongest correlations are captured for
+##each of the 5 target categories A-E:
+#Classe='A':
+ClasseA.corr<-Target.correlations[,c(1,6)]
+ClasseA.corr<-Target.correlations[,c(1,6)]
+ClasseA.corr$absoluteValueA= abs(ClasseA.corr[,1])
+ClasseA.corr=ClasseA.corr[ order(ClasseA.corr[[3]],decreasing=TRUE), ]
+ClasseA.corr=ClasseA.corr[1:10,]
+#Classe='B':
+ClasseB.corr<-Target.correlations[,c(2,6)]
+ClasseB.corr$absoluteValueB= abs(ClasseB.corr[,1])
+ClasseB.corr=ClasseB.corr[ order(ClasseB.corr[[3]],decreasing=TRUE), ]
+ClasseB.corr=ClasseB.corr[1:10,]
+#Classe='C':
+ClasseC.corr<-Target.correlations[,c(3,6)]
+ClasseC.corr$absoluteValueC= abs(ClasseC.corr[,1])
+ClasseC.corr=ClasseC.corr[ order(ClasseC.corr[[3]],decreasing=TRUE), ]
+ClasseC.corr=ClasseC.corr[1:10,]
+#Classe='D':
+ClasseD.corr<-Target.correlations[,c(4,6)]
+ClasseD.corr$absoluteValueD= abs(ClasseD.corr[,1])
+ClasseD.corr=ClasseD.corr[ order(ClasseD.corr[[3]],decreasing=TRUE), ]
+ClasseD.corr=ClasseD.corr[1:10,]
+#Classe='E':
+ClasseE.corr<-Target.correlations[,c(5,6)]
+ClasseE.corr$absoluteValueE= abs(ClasseE.corr[,1])
+ClasseE.corr=ClasseE.corr[ order(ClasseE.corr[[3]],decreasing=TRUE), ]
+ClasseE.corr=ClasseE.corr[1:10,]
+```
+
+```{r, echo = FALSE, cache=TRUE}
+#Create a single table of all the top 'Classe' correlation variables:
+AllClasse.corr <- merge(ClasseA.corr[,2:3], ClasseB.corr[,2:3], by.x = "Feature", by.y = "Feature",all = TRUE)
+AllClasse.corr <- merge(AllClasse.corr, ClasseC.corr[,2:3], by.x = "Feature", by.y = "Feature",all = TRUE)
+AllClasse.corr <- merge(AllClasse.corr, ClasseD.corr[,2:3], by.x = "Feature", by.y = "Feature",all = TRUE)
+AllClasse.corr <- merge(AllClasse.corr, ClasseE.corr[,2:3], by.x = "Feature", by.y = "Feature",all = TRUE)
+
+```
+Build a Decision tree model, and evaluate it's accuracy (SEE TREE CHART BELOW):
+```{r, echo = FALSE, cache=TRUE}
+##########################################################
+#Model Build
+##########################################################
+
+#BUILD Decision Tree Model
+train.subset2=train.subset[,AllClasse.corr[,1]]
+test.subset2=test.subset[,AllClasse.corr[,1]]
+
+train.subset2$classe=train.subset$classe
+test.subset2$problem_id=test.subset$problem_id
+
+#Run Recursive Partitioning and Regression Trees Model to predict classe category
+modFit <- train(classe~ .,data=train.subset2,method="rpart")
+
+#Plot tree
+library(rattle); library(rpart.plot)
+fancyRpartPlot(modFit$finalModel)
+
+#predict test cases
+#predict(modFit,newdata=test.subset2)
+
+```
+*Note that the decision tree prediction classes are only correct about half the time, even in the trainig data.* 
+
+
+So the next step is to improve this modeling approach with a **Random Forest model:** 
+
+```{r, echo = FALSE, cache=TRUE}
+#Build a Random Forest model
+library(caret)
+modFit <- train(classe~ .,data=train.subset2,method="rf",prox=TRUE)
+print(modFit)
+
+#predict on new data
+predict(modFit,newdata=test.subset2)
+
+#MODEL EVALUATION -- KAPPA is recommended method.
+
+```
+Note above that the Random forest has over 87% accuracy for the training set for its final iteration, and it also has a high Kappa coefficient of over .84. The latter of these measures measures the degree that the categories are correct above what would be expected with random luck. 
+
+**Conclusions**
+
+The model shows that accuracy is greatly improved when the random forest approach is used. In particular, it allows for a more through level of cross-validation in it's use of the training data.
